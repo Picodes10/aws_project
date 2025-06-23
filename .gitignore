@@ -1,0 +1,6 @@
+
+.env
+venv/
+# or, if your virtual environment folder is named .venv, you may also want:
+.venv/
+
