@@ -36,3 +36,4 @@ def summarize_text_with_apyhub(text):
     finally:
         if 'conn' in locals():
             conn.close()
+            

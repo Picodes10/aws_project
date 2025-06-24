@@ -42,28 +42,103 @@ function App() {
 
     try {
       setLoading(true);
+      console.log('Sending text to speech API:', text.substring(0, 100) + '...'); // Debug log
+      
       const response = await axios.post(
         `${API_BASE_URL}/synthesize`,
         { text },
-        { responseType: 'blob' }
+        { 
+          responseType: 'blob',
+          timeout: 30000 // 30 second timeout
+        }
       );
+
+      console.log('Received audio response:', response); // Debug log
+      console.log('Response size:', response.data.size); // Debug log
 
       const audioBlob = new Blob([response.data], { type: 'audio/mpeg' });
       const audioUrl = URL.createObjectURL(audioBlob);
       setAudioUrl(audioUrl);
 
       const audio = new Audio(audioUrl);
-      audio.play();
-      setIsPlaying(true);
+      
+      // Add event listeners for better debugging
+      audio.onloadstart = () => console.log('Audio loading started');
+      audio.oncanplay = () => console.log('Audio can play');
+      audio.onplay = () => {
+        console.log('Audio started playing');
+        setIsPlaying(true);
+      };
+      
       audio.onended = () => {
+        console.log('Audio playback ended');
         setIsPlaying(false);
         URL.revokeObjectURL(audioUrl);
+        setAudioUrl(null);
       };
+      
+      audio.onerror = (e) => {
+        console.error('Audio error:', e);
+        setIsPlaying(false);
+        URL.revokeObjectURL(audioUrl);
+        setAudioUrl(null);
+        alert('Error playing audio: ' + e.message);
+      };
+      
+      // Start playing
+      await audio.play();
+      
     } catch (error) {
-      alert('Error playing audio: ' + error.message);
+      console.error('Error in playTextToSpeech:', error); // Debug log
+      console.error('Error response:', error.response); // Debug log
+      
+      let errorMessage = 'Error playing audio: ';
+      if (error.response) {
+        // Server responded with error status
+        if (error.response.data instanceof Blob) {
+          // Try to read the error message from blob
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const errorData = JSON.parse(reader.result);
+              alert(errorMessage + errorData.error);
+            } catch {
+              alert(errorMessage + 'Server error');
+            }
+          };
+          reader.readAsText(error.response.data);
+        } else {
+          errorMessage += error.response.data?.error || error.response.statusText;
+          alert(errorMessage);
+        }
+      } else if (error.request) {
+        // Network error
+        errorMessage += 'Network error - please check your connection';
+        alert(errorMessage);
+      } else {
+        // Other error
+        errorMessage += error.message;
+        alert(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const playSummaryAudio = async () => {
+    if (!summary) {
+      alert('Please generate a summary first!');
+      return;
+    }
+    await playTextToSpeech(summary);
+  };
+
+  const playExtractedTextAudio = async () => {
+    if (!extractedText) {
+      alert('Please extract text first!');
+      return;
+    }
+    await playTextToSpeech(extractedText);
   };
 
   const extractText = async () => {
@@ -126,15 +201,18 @@ function App() {
 
       <Box sx={{ mb: 4 }}>
         <Typography variant="h5" gutterBottom>🧠 Actions</Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Button variant="contained" onClick={extractText} disabled={!filename || loading}>
             🔍 Extract Text
           </Button>
           <Button variant="contained" onClick={summarizeText} disabled={!extractedText || loading}>
             📝 Summarize
           </Button>
-          <Button variant="contained" disabled>
-            🔊 Listen
+          <Button variant="contained" onClick={playExtractedTextAudio} disabled={!extractedText || loading}>
+            🔊 Listen to Text {isPlaying && '(Playing...)'}
+          </Button>
+          <Button variant="contained" onClick={playSummaryAudio} disabled={!summary || loading}>
+            🔊 Listen to Summary {isPlaying && '(Playing...)'}
           </Button>
         </Box>
       </Box>
@@ -156,7 +234,7 @@ function App() {
         <Paper sx={{ p: 2, mb: 4 }}>
           <Typography variant="h5" gutterBottom>✍️ Summary</Typography>
           <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-            {summary.summary}
+            {summary}
           </Typography>
         </Paper>
       )}
