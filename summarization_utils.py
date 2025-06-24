@@ -1,17 +1,38 @@
-import os
-import requests
+import http.client
+import json
 
-def summarize_text_with_hf(text):
-    api_token = os.getenv('HUGGINGFACEHUB_API_TOKEN')
-    if not api_token:
-        return 'Hugging Face API token not set. Please set the HUGGINGFACEHUB_API_TOKEN environment variable.'
-    API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-    headers = {"Authorization": f"Bearer {api_token}"}
-    payload = {"inputs": text[:1024]}
-    response = requests.post(API_URL, headers=headers, json=payload)
-    if response.status_code != 200:
-        return f"Hugging Face API error: {response.status_code} - {response.text}"
-    result = response.json()
-    if isinstance(result, dict) and result.get('error'):
-        return f"Hugging Face API error: {result['error']}"
-    return result[0]['summary_text'] if result and isinstance(result, list) and 'summary_text' in result[0] else 'No summary returned.' 
+def summarize_text_with_apyhub(text):
+    try:
+        conn = http.client.HTTPSConnection("api.apyhub.com")
+        
+        payload = json.dumps({
+            "text": text
+        })
+        
+        headers = {
+            'apy-token': "APY0e7OnyNc5EsIyyjnQtpP0ApovvKAPa83UJNrPJPszJ2SNml8gTs6v3jKKzruuH",
+            'Content-Type': "application/json"
+        }
+        
+        conn.request("POST", "/ai/summarize-text", payload, headers)
+        
+        response = conn.getresponse()
+        data = response.read()
+        
+        if response.status != 200:
+            raise Exception(f"APY Hub API error: {response.status} - {data.decode('utf-8')}")
+        
+        result = json.loads(data.decode("utf-8"))
+        summary = result.get('data')
+        
+        if not summary:
+            raise Exception("No summary returned from API")
+            
+        # Ensure we return a string
+        return str(summary)
+        
+    except Exception as e:
+        raise Exception(f"Error during summarization: {str(e)}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
